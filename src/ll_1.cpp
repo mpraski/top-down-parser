@@ -94,9 +94,9 @@ public:
 					if(s.IsTerminal()) terminals.insert(s);
 				}
 			}
-
-			terminals.insert(END);
 		}
+
+		terminals.insert(END);
 	}
 
 	using Iter = std::unordered_map<Symbol, std::vector<Production>>::const_iterator;
