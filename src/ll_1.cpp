@@ -67,8 +67,10 @@ using Production = std::vector<Symbol>;
 using SymbolSet = std::unordered_set<Symbol>;
 using ParsingTable = std::unordered_map<Symbol, std::unordered_map<Symbol, Production>>;
 
-const Symbol EPS(SymbolType::TERM, "e");
-const Symbol END(SymbolType::NON_TERM, "end");
+const Symbol EPS(SymbolType::TERM, "\u03B5");
+const Symbol END(SymbolType::NON_TERM, "\u2190");
+
+const Production EPS_PRODUCTION { EPS };
 
 class Grammar {
 private:
@@ -236,18 +238,39 @@ void table(
 	ParsingTable& result
 ) {
 
-	auto terminals { grammar.Terminals() };
-
-	for(const auto& set : first)
-	{
-
-	}
+	SymbolSet terminals { grammar.Terminals() };
 
 	for(const auto& rule : grammar)
 	{
 		for(const auto& production : rule.second)
 		{
+			SymbolSet f { first.at(production[0]) };
 
+			if(!production[0].IsTerminal() && first.at(production[0]).find(EPS) == f.end())
+			{
+				for(size_t i = 1; i < production.size(); ++i)
+				{
+					if(first.at(production[i]).find(EPS) == f.end()) break;
+					f.insert(first.at(production[i]).begin(), first.at(production[i]).end());
+				}
+			}
+
+			if(f.find(EPS) == f.end())
+			{
+				for(const auto& terminal : terminals)
+				{
+					if(f.find(terminal) != f.end())
+					{
+						result[rule.first][terminal] = production;
+					}
+				}
+			} else
+			{
+				for(const auto& ff : follow.at(rule.first))
+				{
+					result[rule.first][ff] = EPS_PRODUCTION;
+				}
+			}
 		}
 	}
 }
@@ -279,8 +302,8 @@ int main() {
 	{
 		if(it.first.IsTerminal()) continue;
 
-		std::cout << "First(" << it.first << "): ";
-		for(auto it2 : it.second)
+		std::cout << "First( " << it.first << " ): ";
+		for(const auto& it2 : it.second)
 		{
 			std::cout << it2 << " ";
 		}
@@ -297,11 +320,34 @@ int main() {
 	{
 		if(it.first.IsTerminal()) continue;
 
-		std::cout << "Follow(" << it.first << "): ";
-		for(auto it2 : it.second)
+		std::cout << "Follow( " << it.first << " ): ";
+		for(const auto& it2 : it.second)
 		{
 			std::cout << it2 << " ";
 		}
+		std::cout << std::endl;
+	}
+
+	std::cout << std::endl;
+
+	ParsingTable p_table;
+
+	table(g, first_set, follow_set, p_table);
+
+	for(const auto& row : p_table)
+	{
+		std::cout << "Entry for row " << row.first << ": ";
+		for(const auto& s : row.second)
+		{
+			std::cout << s.first << " [ ";
+			for(const auto& p : s.second)
+			{
+				std::cout << p << " ";
+			}
+
+			std::cout << "] ";
+		}
+
 		std::cout << std::endl;
 	}
 
