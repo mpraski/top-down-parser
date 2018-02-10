@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <initializer_list>
+#include <stdexcept>
 
 enum class SymbolType { TERM, NON_TERM };
 
@@ -22,7 +23,7 @@ private:
 	SymbolType type;
 	std::string value;
 public:
-	Symbol(): type(SymbolType::TERM), value("e") {}
+	Symbol(): type(SymbolType::TERM), value({}) {}
 	Symbol(SymbolType type, std::string value): type(type), value(value) {}
 
 	const std::string Value() const
@@ -80,10 +81,12 @@ private:
 public:
 	Grammar(std::initializer_list<std::pair<Symbol, std::vector<Production>>> l)
 	{
-		if(l.size() > 0)
+		if(l.size() == 0)
 		{
-			first = l.begin()->first;
+			throw std::invalid_argument("Size of grammar is zero");
 		}
+
+		first = l.begin()->first;
 
 		for (const auto& it : l)
 		{
