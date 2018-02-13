@@ -23,9 +23,9 @@ const std::string STR_NON_TERM = "N";
 
 class Symbol {
 private:
-	bool 		terminal;
+	bool        terminal;
 	std::string name;
-	exp::any 	value;
+	exp::any    value;
 
 	Symbol(bool terminal, std::string name):
 		terminal(terminal),
@@ -52,7 +52,7 @@ public:
 
 	static bool equal(const std::shared_ptr<Symbol>& s1, const std::shared_ptr<Symbol>& s2)
 	{
-		return s1->IsTerminal() == s2->IsTerminal() && s1->Name() == s2->Name();
+		return *s1 == *s2;
 	}
 
 	const std::string Name() const
