@@ -233,7 +233,7 @@ void _follow(
 					continue;
 				}
 
-				const SymbolSet set { first.at(sym) };
+				SymbolSet set { first.at(sym) };
 
 				result[s].insert(set.cbegin(), set.cend());
 				result[s].erase(EPS);
@@ -382,7 +382,7 @@ int main() {
 	const auto TIMES = Symbol::Terminal("*");
 	const auto INT   = Symbol::Terminal("int");
 
-	Grammar const g = {
+	const Grammar g = {
 		{ E, { {T, X}                } },
 		{ X, { {PLUS, E},   {EPS}    } },
 		{ T, { {LP, E, RP}, {INT, Y} } },
