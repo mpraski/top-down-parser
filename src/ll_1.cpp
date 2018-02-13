@@ -18,7 +18,7 @@
 
 namespace exp = std::experimental;
 
-const std::string STR_TERM = "T";
+const std::string STR_TERM     = "T";
 const std::string STR_NON_TERM = "N";
 
 class Symbol {
@@ -70,11 +70,6 @@ public:
 		return (terminal == other.terminal && name == other.name);
 	}
 
-	bool operator!=(const Symbol &other) const
-	{
-		return (terminal != other.terminal || name != other.name);
-	}
-
 	friend std::ostream & operator<<(std::ostream & _stream, Symbol const & s) {
 		_stream << (s.IsTerminal() ? STR_TERM : STR_NON_TERM) << "(`" << s.Name() << "`)";
 		return _stream;
@@ -82,16 +77,6 @@ public:
 };
 
 namespace std {
-	template <> struct hash<Symbol> {
-		std::size_t operator()(const Symbol& s) const
-		{
-		  using std::size_t;
-		  using std::hash;
-
-		  return hash<std::string>()(s.Name()) ^ hash<bool>()(s.IsTerminal());
-		}
-	};
-
 	template <> struct hash<Symbol*> {
 		std::size_t operator()(const Symbol *s) const
 		{
@@ -326,17 +311,16 @@ void table(
 }
 
 void parse(
-	const std::vector<SymRef>& symbols,
-	ParsingTable& p_table
+	const Grammar& grammar,
+	ParsingTable& p_table,
+	const std::vector<SymRef>& symbols
 ) {
 	std::stack<SymRef> stack;
 
 	auto ptr = symbols.begin();
 
 	stack.push(END);
-	stack.push(*ptr);
-
-	std::next(ptr);
+	stack.push(grammar.First());
 
 	while(!stack.empty())
 	{
@@ -345,16 +329,22 @@ void parse(
 
 		if(p->IsTerminal())
 		{
-			std::next(ptr);
 			if(!Symbol::equal(p, *ptr))
 			{
-				throw std::runtime_error("Malformed input");
+				throw std::runtime_error("Malformed input: terminal " + p->Name());
 			}
+
+			ptr = std::next(ptr);
 		} else
 		{
-			if(!p_table[p][*ptr].empty())
+			if(p_table[p][*ptr].empty())
 			{
-				throw std::runtime_error("Malformed input");
+				throw std::runtime_error("Malformed input: table[" + p->Name() + "][" + (*ptr)->Name() + "]");
+			}
+
+			if(p_table[p][*ptr] == EPS_PRODUCTION)
+			{
+				continue;
 			}
 
 			for (auto it = p_table[p][*ptr].rbegin(); it != p_table[p][*ptr].rend(); ++it)
@@ -378,10 +368,10 @@ int main() {
 	const auto INT   = Symbol::Terminal("int");
 
 	Grammar const g = {
-			{ E, { {T, X}                } },
-			{ X, { {PLUS, E},   {EPS}    } },
-			{ T, { {LP, E, RP}, {INT, Y} } },
-			{ Y, { {TIMES, T},  {EPS}    } },
+		{ E, { {T, X}                } },
+		{ X, { {PLUS, E},   {EPS}    } },
+		{ T, { {LP, E, RP}, {INT, Y} } },
+		{ Y, { {TIMES, T},  {EPS}    } },
 	};
 
 	/*std::unordered_map<Symbol, SymbolSet> first_set;
@@ -440,6 +430,10 @@ int main() {
 
 		std::cout << std::endl;
 	}
+
+	std::vector<SymRef> str { INT, TIMES, INT, END };
+
+	parse(g, p_table, str);
 
 	return 0;
 }
