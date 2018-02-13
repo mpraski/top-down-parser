@@ -7,79 +7,119 @@
 //============================================================================
 
 #include <iostream>
+#include <memory>
 #include <vector>
+#include <stack>
 #include <unordered_map>
 #include <unordered_set>
 #include <initializer_list>
+#include <experimental/any>
 #include <stdexcept>
 
-enum class SymbolType { TERM, NON_TERM };
+namespace exp = std::experimental;
 
 const std::string STR_TERM = "T";
 const std::string STR_NON_TERM = "N";
 
 class Symbol {
 private:
-	SymbolType type;
-	std::string value;
-public:
-	Symbol(): type(SymbolType::TERM), value({}) {}
-	Symbol(SymbolType type, std::string value): type(type), value(value) {}
+	bool 		terminal;
+	std::string name;
+	exp::any 	value;
 
-	const std::string Value() const
+	Symbol(bool terminal, std::string name):
+		terminal(terminal),
+		name(name) {}
+
+	Symbol(std::string name, exp::any value):
+		terminal(true),
+		name(name),
+		value(value) {}
+public:
+	Symbol(): terminal(true) {}
+
+	static std::shared_ptr<Symbol> Terminal(std::string name) {
+		return std::shared_ptr<Symbol>(new Symbol(true, name));
+	}
+
+	static std::shared_ptr<Symbol> Terminal(std::string name, exp::any value) {
+		return std::shared_ptr<Symbol>(new Symbol(name, value));
+	}
+
+	static std::shared_ptr<Symbol> NonTerminal(std::string name) {
+		return std::shared_ptr<Symbol>(new Symbol(false, name));
+	}
+
+	static bool equal(const std::shared_ptr<Symbol>& s1, const std::shared_ptr<Symbol>& s2)
 	{
-		return value;
+		return s1->IsTerminal() == s2->IsTerminal() && s1->Name() == s2->Name();
+	}
+
+	const std::string Name() const
+	{
+		return name;
 	}
 
 	bool IsTerminal() const
 	{
-		return type == SymbolType::TERM;
+		return terminal;
 	}
 
 	bool operator==(const Symbol &other) const
 	{
-		return (type == other.type && value == other.value);
+		return (terminal == other.terminal && name == other.name);
 	}
 
 	bool operator!=(const Symbol &other) const
 	{
-		return (type != other.type || value != other.value);
+		return (terminal != other.terminal || name != other.name);
 	}
 
 	friend std::ostream & operator<<(std::ostream & _stream, Symbol const & s) {
-		_stream << (s.IsTerminal() ? STR_TERM : STR_NON_TERM) << "(`" << s.Value() << "`)";
+		_stream << (s.IsTerminal() ? STR_TERM : STR_NON_TERM) << "(`" << s.Name() << "`)";
 		return _stream;
 	}
 };
 
 namespace std {
-template <> struct hash<Symbol> {
-    std::size_t operator()(const Symbol& s) const
-    {
-      using std::size_t;
-      using std::hash;
+	template <> struct hash<Symbol> {
+		std::size_t operator()(const Symbol& s) const
+		{
+		  using std::size_t;
+		  using std::hash;
 
-      return hash<std::string>()(s.Value()) ^ hash<bool>()(s.IsTerminal());
-    }
-  };
+		  return hash<std::string>()(s.Name()) ^ hash<bool>()(s.IsTerminal());
+		}
+	};
+
+	template <> struct hash<Symbol*> {
+		std::size_t operator()(const Symbol *s) const
+		{
+		   using std::size_t;
+		   using std::hash;
+
+		   return hash<std::string>()(s->Name()) ^ hash<bool>()(s->IsTerminal());
+		}
+	};
 }
 
-using Production = std::vector<Symbol>;
-using SymbolSet = std::unordered_set<Symbol>;
-using ParsingTable = std::unordered_map<Symbol, std::unordered_map<Symbol, Production>>;
+using SymRef	   = std::shared_ptr<Symbol>;
+using Production   = std::vector<SymRef>;
+using SymbolSet    = std::unordered_set<SymRef>;
+using ParsingTable = std::unordered_map<SymRef, std::unordered_map<SymRef, Production>>;
 
-const Symbol EPS(SymbolType::TERM, "\u03B5");
-const Symbol END(SymbolType::NON_TERM, "\u2190");
+const auto EPS = Symbol::Terminal("\u03B5");
+const auto END = Symbol::Terminal("\u2190");
 
 const Production EPS_PRODUCTION { EPS };
 
 class Grammar {
 private:
-	std::unordered_map<Symbol, std::vector<Production>> grammar;
-	std::unordered_set<Symbol> terminals;
-	Symbol first;
+	std::unordered_map<SymRef, std::vector<Production>> grammar;
+	std::unordered_set<SymRef> terminals;
+	SymRef first;
 public:
-	Grammar(std::initializer_list<std::pair<Symbol, std::vector<Production>>> l)
+	Grammar(std::initializer_list<std::pair<SymRef, std::vector<Production>>> l)
 	{
 		if(l.size() == 0)
 		{
@@ -96,7 +136,7 @@ public:
 			{
 				for(const auto& s : p)
 				{
-					if(s.IsTerminal()) terminals.insert(s);
+					if(s->IsTerminal()) terminals.insert(s);
 				}
 			}
 		}
@@ -104,7 +144,7 @@ public:
 		terminals.insert(END);
 	}
 
-	using Iter = std::unordered_map<Symbol, std::vector<Production>>::const_iterator;
+	using Iter = std::unordered_map<SymRef, std::vector<Production>>::const_iterator;
 
 	const Iter begin() const
 	{
@@ -116,28 +156,28 @@ public:
 		return grammar.cend();
 	}
 
-	const Symbol& First() const
+	const SymRef& First() const
 	{
 		return first;
 	}
 
-	const std::vector<Production>& At(const Symbol& s) const
+	const std::vector<Production>& At(const SymRef& s) const
 	{
 		return grammar.at(s);
 	}
 
-	const std::unordered_set<Symbol>& Terminals() const
+	const std::unordered_set<SymRef>& Terminals() const
 	{
 		return terminals;
 	}
 };
 
 void _first(
-	const Symbol& s,
+	const SymRef& s,
 	const Grammar& grammar,
-	std::unordered_map<Symbol, SymbolSet>& result)
+	std::unordered_map<SymRef, SymbolSet>& result)
 {
-	if(!s.IsTerminal())
+	if(!s->IsTerminal())
 	{
 		for(const auto& production : grammar.At(s))
 		{
@@ -160,17 +200,11 @@ void _first(
 
 void first(
 	const Grammar& grammar,
-	std::unordered_map<Symbol, SymbolSet>& result)
+	std::unordered_map<SymRef, SymbolSet>& result)
 {
-	for(const auto& rule : grammar)
+	for(const auto& sym : grammar.Terminals())
 	{
-		for(const auto& production : rule.second)
-		{
-			for(const auto& sym : production)
-			{
-				if(sym.IsTerminal()) result[sym].insert(sym);
-			}
-		}
+		result[sym].insert(sym);
 	}
 
 	for(const auto& rule : grammar)
@@ -180,11 +214,11 @@ void first(
 }
 
 void _follow(
-	const Symbol& s,
-	const Symbol& prev,
+	const SymRef& s,
+	const SymRef& prev,
 	const Grammar& grammar,
-	const std::unordered_map<Symbol, SymbolSet>& first,
-	std::unordered_map<Symbol, SymbolSet>& result)
+	const std::unordered_map<SymRef, SymbolSet>& first,
+	std::unordered_map<SymRef, SymbolSet>& result)
 {
 	for(const auto& kv : grammar)
 	{
@@ -193,7 +227,7 @@ void _follow(
 			bool found { false };
 			for(const auto& sym : production)
 			{
-				if(!found && sym != s) continue;
+				if(!found && !Symbol::equal(sym, s)) continue;
 				else if(!found) {
 					found = true;
 					continue;
@@ -223,8 +257,8 @@ void _follow(
 
 void follow(
 	const Grammar& grammar,
-	const std::unordered_map<Symbol, SymbolSet>& first,
-	std::unordered_map<Symbol, SymbolSet>& result)
+	const std::unordered_map<SymRef, SymbolSet>& first,
+	std::unordered_map<SymRef, SymbolSet>& result)
 {
 	result[grammar.First()].insert(END);
 
@@ -234,10 +268,10 @@ void follow(
 	}
 }
 
-void table(
+void _table(
 	const Grammar& grammar,
-	const std::unordered_map<Symbol, SymbolSet>& first,
-	const std::unordered_map<Symbol, SymbolSet>& follow,
+	const std::unordered_map<SymRef, SymbolSet>& first,
+	const std::unordered_map<SymRef, SymbolSet>& follow,
 	ParsingTable& result
 ) {
 
@@ -249,7 +283,7 @@ void table(
 		{
 			SymbolSet f { first.at(production[0]) };
 
-			if(!production[0].IsTerminal() && first.at(production[0]).find(EPS) == f.end())
+			if(!production[0]->IsTerminal() && first.at(production[0]).find(EPS) != f.end())
 			{
 				for(size_t i = 1; i < production.size(); ++i)
 				{
@@ -278,17 +312,70 @@ void table(
 	}
 }
 
-int main() {
-	Symbol const E(SymbolType::NON_TERM, "E");
-	Symbol const T(SymbolType::NON_TERM, "T");
-	Symbol const X(SymbolType::NON_TERM, "X");
-	Symbol const Y(SymbolType::NON_TERM, "Y");
+void table(
+	const Grammar& grammar,
+	ParsingTable& p_table
+) {
+	std::unordered_map<SymRef, SymbolSet> first_set;
+	std::unordered_map<SymRef, SymbolSet> follow_set;
 
-	Symbol const LP(SymbolType::TERM, "(");
-	Symbol const RP(SymbolType::TERM, ")");
-	Symbol const PLUS(SymbolType::TERM, "+");
-	Symbol const TIMES(SymbolType::TERM, "*");
-	Symbol const INT(SymbolType::TERM, "int");
+	first(grammar, first_set);
+	follow(grammar, first_set, follow_set);
+
+	_table(grammar, first_set, follow_set, p_table);
+}
+
+void parse(
+	const std::vector<SymRef>& symbols,
+	ParsingTable& p_table
+) {
+	std::stack<SymRef> stack;
+
+	auto ptr = symbols.begin();
+
+	stack.push(END);
+	stack.push(*ptr);
+
+	std::next(ptr);
+
+	while(!stack.empty())
+	{
+		auto p = stack.top();
+		stack.pop();
+
+		if(p->IsTerminal())
+		{
+			std::next(ptr);
+			if(!Symbol::equal(p, *ptr))
+			{
+				throw std::runtime_error("Malformed input");
+			}
+		} else
+		{
+			if(!p_table[p][*ptr].empty())
+			{
+				throw std::runtime_error("Malformed input");
+			}
+
+			for (auto it = p_table[p][*ptr].rbegin(); it != p_table[p][*ptr].rend(); ++it)
+			{
+				stack.push(*it);
+			}
+		}
+	}
+}
+
+int main() {
+	const auto E = Symbol::NonTerminal("E");
+	const auto T = Symbol::NonTerminal("T");
+	const auto X = Symbol::NonTerminal("X");
+	const auto Y = Symbol::NonTerminal("Y");
+
+	const auto LP    = Symbol::Terminal("(");
+	const auto RP    = Symbol::Terminal(")");
+	const auto PLUS  = Symbol::Terminal("+");
+	const auto TIMES = Symbol::Terminal("*");
+	const auto INT   = Symbol::Terminal("int");
 
 	Grammar const g = {
 			{ E, { {T, X}                } },
@@ -297,7 +384,7 @@ int main() {
 			{ Y, { {TIMES, T},  {EPS}    } },
 	};
 
-	std::unordered_map<Symbol, SymbolSet> first_set;
+	/*std::unordered_map<Symbol, SymbolSet> first_set;
 
 	first(g, first_set);
 
@@ -331,21 +418,21 @@ int main() {
 		std::cout << std::endl;
 	}
 
-	std::cout << std::endl;
+	std::cout << std::endl;*/
 
 	ParsingTable p_table;
 
-	table(g, first_set, follow_set, p_table);
+	table(g, p_table);
 
 	for(const auto& row : p_table)
 	{
-		std::cout << "Entry for row " << row.first << ": ";
+		std::cout << "Entry for row " << *row.first << ": ";
 		for(const auto& s : row.second)
 		{
-			std::cout << s.first << " [ ";
+			std::cout << *s.first << " [ ";
 			for(const auto& p : s.second)
 			{
-				std::cout << p << " ";
+				std::cout << *p << " ";
 			}
 
 			std::cout << "] ";
