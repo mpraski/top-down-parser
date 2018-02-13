@@ -36,7 +36,7 @@ private:
 		name(name),
 		value(value) {}
 public:
-	Symbol(): terminal(true) {}
+	Symbol() {}
 
 	static std::shared_ptr<Symbol> Terminal(std::string name) {
 		return std::shared_ptr<Symbol>(new Symbol(true, name));
@@ -55,14 +55,24 @@ public:
 		return *s1 == *s2;
 	}
 
-	const std::string Name() const
+	bool IsTerminal() const
+	{
+		return terminal;
+	}
+
+	std::string Name() const
 	{
 		return name;
 	}
 
-	bool IsTerminal() const
+	bool HasValue() const
 	{
-		return terminal;
+		return !value.empty();
+	}
+
+	template <class T> T GetValue() const
+	{
+		return exp::any_cast<T>(value);
 	}
 
 	bool operator==(const Symbol &other) const
@@ -75,6 +85,11 @@ public:
 		return _stream;
 	}
 };
+
+bool operator==(const std::shared_ptr<Symbol>& s1, const std::shared_ptr<Symbol>& s2)
+{
+    return Symbol::equal(s1, s2);
+}
 
 namespace std {
 	template <> struct hash<Symbol*> {
@@ -374,42 +389,6 @@ int main() {
 		{ Y, { {TIMES, T},  {EPS}    } },
 	};
 
-	/*std::unordered_map<Symbol, SymbolSet> first_set;
-
-	first(g, first_set);
-
-	for(const auto& it : first_set)
-	{
-		if(it.first.IsTerminal()) continue;
-
-		std::cout << "First( " << it.first << " ): ";
-		for(const auto& it2 : it.second)
-		{
-			std::cout << it2 << " ";
-		}
-		std::cout << std::endl;
-	}
-
-	std::cout << std::endl;
-
-	std::unordered_map<Symbol, SymbolSet> follow_set;
-
-	follow(g, first_set, follow_set);
-
-	for(const auto& it : follow_set)
-	{
-		if(it.first.IsTerminal()) continue;
-
-		std::cout << "Follow( " << it.first << " ): ";
-		for(const auto& it2 : it.second)
-		{
-			std::cout << it2 << " ";
-		}
-		std::cout << std::endl;
-	}
-
-	std::cout << std::endl;*/
-
 	ParsingTable p_table;
 
 	table(g, p_table);
@@ -431,7 +410,16 @@ int main() {
 		std::cout << std::endl;
 	}
 
-	std::vector<SymRef> str { INT, TIMES, INT, END };
+	std::vector<SymRef> str {
+		Symbol::Terminal("("),
+		Symbol::Terminal("int", 5),
+		Symbol::Terminal("*"),
+		Symbol::Terminal("int", 10),
+		Symbol::Terminal("+"),
+		Symbol::Terminal("int", 15),
+		Symbol::Terminal(")"),
+		END
+	};
 
 	parse(g, p_table, str);
 
