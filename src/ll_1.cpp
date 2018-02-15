@@ -12,6 +12,7 @@
 #include <stack>
 #include <unordered_map>
 #include <unordered_set>
+#include <functional>
 #include <initializer_list>
 #include <experimental/any>
 #include <stdexcept>
@@ -80,7 +81,7 @@ public:
 		return (terminal == other.terminal && name == other.name);
 	}
 
-	friend std::ostream & operator<<(std::ostream & _stream, Symbol const & s) {
+	friend std::ostream& operator<<(std::ostream& _stream, Symbol const& s) {
 		_stream << (s.IsTerminal() ? STR_TERM : STR_NON_TERM) << "(`" << s.Name() << "`)";
 		return _stream;
 	}
@@ -103,18 +104,28 @@ namespace std {
 	};
 }
 
-using SymRef	   = std::shared_ptr<Symbol>;
-using Production   = std::vector<SymRef>;
+using SymRef = std::shared_ptr<Symbol>;
+using Action = std::function<SymRef(std::vector<SymRef>)>;
+
+struct Production {
+	std::vector<SymRef> symbols;
+	Action action = nullptr;
+
+	bool operator==(const Production& other)
+	{
+	    return symbols == other.symbols;
+	}
+};
+
 using SymbolSet    = std::unordered_set<SymRef>;
 using ParsingTable = std::unordered_map<SymRef, std::unordered_map<SymRef, Production>>;
 
 const auto EPS = Symbol::Terminal("\u03B5");
 const auto END = Symbol::Terminal("\u2190");
 
-const Production EPS_PRODUCTION { EPS };
+const Production EPS_PROD {{ EPS }};
 
 class Grammar {
-private:
 	std::unordered_map<SymRef, std::vector<Production>> grammar;
 	std::unordered_set<SymRef> terminals;
 	SymRef first;
@@ -134,7 +145,7 @@ public:
 
 			for(const auto& p : it.second)
 			{
-				for(const auto& s : p)
+				for(const auto& s : p.symbols)
 				{
 					if(s->IsTerminal()) terminals.insert(s);
 				}
@@ -175,13 +186,13 @@ public:
 void _first(
 	const SymRef& s,
 	const Grammar& grammar,
-	std::unordered_map<SymRef, SymbolSet>& result)
-{
+	std::unordered_map<SymRef, SymbolSet>& result
+) {
 	if(!s->IsTerminal())
 	{
 		for(const auto& production : grammar.At(s))
 		{
-			for(const auto& sym : production)
+			for(const auto& sym : production.symbols)
 			{
 				_first(sym, grammar, result);
 
@@ -200,8 +211,8 @@ void _first(
 
 void first(
 	const Grammar& grammar,
-	std::unordered_map<SymRef, SymbolSet>& result)
-{
+	std::unordered_map<SymRef, SymbolSet>& result
+) {
 	for(const auto& sym : grammar.Terminals())
 	{
 		result[sym].insert(sym);
@@ -218,14 +229,14 @@ void _follow(
 	const SymRef& prev,
 	const Grammar& grammar,
 	const std::unordered_map<SymRef, SymbolSet>& first,
-	std::unordered_map<SymRef, SymbolSet>& result)
-{
+	std::unordered_map<SymRef, SymbolSet>& result
+) {
 	for(const auto& kv : grammar)
 	{
 		for(const auto& production : kv.second)
 		{
 			bool found { false };
-			for(const auto& sym : production)
+			for(const auto& sym : production.symbols)
 			{
 				if(!found && !Symbol::equal(sym, s)) continue;
 				else if(!found) {
@@ -258,8 +269,8 @@ void _follow(
 void follow(
 	const Grammar& grammar,
 	const std::unordered_map<SymRef, SymbolSet>& first,
-	std::unordered_map<SymRef, SymbolSet>& result)
-{
+	std::unordered_map<SymRef, SymbolSet>& result
+) {
 	result[grammar.First()].insert(END);
 
 	for(const auto& rule : grammar)
@@ -281,14 +292,14 @@ void _table(
 	{
 		for(const auto& production : rule.second)
 		{
-			SymbolSet f { first.at(production[0]) };
+			SymbolSet f { first.at(production.symbols[0]) };
 
-			if(!production[0]->IsTerminal() && first.at(production[0]).find(EPS) != f.end())
+			if(!production.symbols[0]->IsTerminal() && first.at(production.symbols[0]).find(EPS) != f.end())
 			{
-				for(size_t i = 1; i < production.size(); ++i)
+				for(size_t i = 1; i < production.symbols.size(); ++i)
 				{
-					if(first.at(production[i]).find(EPS) == f.end()) break;
-					f.insert(first.at(production[i]).begin(), first.at(production[i]).end());
+					if(first.at(production.symbols[i]).find(EPS) == f.end()) break;
+					f.insert(first.at(production.symbols[i]).begin(), first.at(production.symbols[i]).end());
 				}
 			}
 
@@ -305,7 +316,7 @@ void _table(
 			{
 				for(const auto& ff : follow.at(rule.first))
 				{
-					result[rule.first][ff] = EPS_PRODUCTION;
+					result[rule.first][ff] = EPS_PROD;
 				}
 			}
 		}
@@ -352,17 +363,17 @@ void parse(
 			ptr = std::next(ptr);
 		} else
 		{
-			if(p_table[p][*ptr].empty())
+			if(p_table[p][*ptr].symbols.empty())
 			{
 				throw std::runtime_error("Malformed input: table[" + p->Name() + "][" + (*ptr)->Name() + "]");
 			}
 
-			if(p_table[p][*ptr] == EPS_PRODUCTION)
+			if(p_table[p][*ptr] == EPS_PROD)
 			{
 				continue;
 			}
 
-			for (auto it = p_table[p][*ptr].rbegin(); it != p_table[p][*ptr].rend(); ++it)
+			for (auto it = p_table[p][*ptr].symbols.rbegin(); it != p_table[p][*ptr].symbols.rend(); ++it)
 			{
 				stack.push(*it);
 			}
@@ -383,10 +394,10 @@ int main() {
 	const auto INT   = Symbol::Terminal("int");
 
 	const Grammar g = {
-		{ E, { {T, X}                } },
-		{ X, { {PLUS, E},   {EPS}    } },
-		{ T, { {LP, E, RP}, {INT, Y} } },
-		{ Y, { {TIMES, T},  {EPS}    } },
+		{ E, { {{T, X}}                  } },
+		{ X, { {{PLUS, E}}  , {{EPS}}	 } },
+		{ T, { {{LP, E, RP}}, {{INT, Y}} } },
+		{ Y, { {{TIMES, T}} , {{EPS}}    } },
 	};
 
 	ParsingTable p_table;
@@ -399,7 +410,7 @@ int main() {
 		for(const auto& s : row.second)
 		{
 			std::cout << *s.first << " [ ";
-			for(const auto& p : s.second)
+			for(const auto& p : s.second.symbols)
 			{
 				std::cout << *p << " ";
 			}
@@ -421,7 +432,13 @@ int main() {
 		END
 	};
 
-	parse(g, p_table, str);
+	try {
+		parse(g, p_table, str);
+	} catch (const std::runtime_error& e) {
+	    std::cout << "Parsing error: " << e.what() << std::endl;
+	}
+
+	std::cout << "Parse successful" << std::endl;
 
 	return 0;
 }
