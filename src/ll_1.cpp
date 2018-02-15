@@ -109,7 +109,11 @@ using Action = std::function<SymRef(std::vector<SymRef>)>;
 
 struct Production {
 	std::vector<SymRef> symbols;
-	Action action = nullptr;
+	Action action;
+
+	Production(): action(nullptr) {}
+	Production(std::initializer_list<SymRef> symbols): symbols(symbols), action(nullptr) {}
+	Production(std::initializer_list<SymRef> symbols, Action action): symbols(symbols), action(action) {}
 
 	bool operator==(const Production& other)
 	{
@@ -123,7 +127,7 @@ using ParsingTable = std::unordered_map<SymRef, std::unordered_map<SymRef, Produ
 const auto EPS = Symbol::Terminal("\u03B5");
 const auto END = Symbol::Terminal("\u2190");
 
-const Production EPS_PROD {{ EPS }};
+const Production EPS_PROD { EPS };
 
 class Grammar {
 	std::unordered_map<SymRef, std::vector<Production>> grammar;
@@ -395,9 +399,9 @@ int main() {
 
 	const Grammar g = {
 		{ E, { {{T, X}}                  } },
-		{ X, { {{PLUS, E}}  , {{EPS}}	 } },
+		{ X, { {{PLUS, E}}  , {EPS}	     } },
 		{ T, { {{LP, E, RP}}, {{INT, Y}} } },
-		{ Y, { {{TIMES, T}} , {{EPS}}    } },
+		{ Y, { {{TIMES, T}} , {EPS}      } },
 	};
 
 	ParsingTable p_table;
